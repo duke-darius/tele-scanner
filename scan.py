@@ -1,27 +1,14 @@
 import configparser
 import json
 import asyncio
-from datetime import date, datetime
 
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
-from telethon.tl.functions.messages import (GetHistoryRequest)
+from telethon.tl.functions.channels import GetParticipantsRequest
+from telethon.tl.types import ChannelParticipantsSearch
 from telethon.tl.types import (
     PeerChannel
 )
-
-
-# some functions to parse json date
-class DateTimeEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-
-        if isinstance(o, bytes):
-            return list(o)
-
-        return json.JSONEncoder.default(self, o)
-
 
 # Reading Configs
 config = configparser.ConfigParser()
@@ -36,10 +23,9 @@ api_hash = str(api_hash)
 phone = config['Telegram']['phone']
 username = config['Telegram']['username']
 
-eIDsFile = open('telegramq.txt', 'r') # Input file
+eIDsFile = open('telegramq.txt', 'r')
 eIDs = eIDsFile.readlines()
 print("ECount: ", len(eIDs))
-
 
 # Create the client and connect
 client = TelegramClient(username, api_id, api_hash)
@@ -71,50 +57,34 @@ async def main(phone):
 
         try:
             my_channel = await client.get_entity(entity)
-            print(my_channel)
-            offset_id = 0
+
+            offset = 0
             limit = 100
-            all_messages = []
-            total_messages = 0
-            total_count_limit = 0
+            all_participants = []
 
             while True:
-                print("Current Offset ID is:", offset_id, "; Total Messages:", total_messages)
-                history = await client(GetHistoryRequest(
-                    peer=my_channel,
-                    offset_id=offset_id,
-                    offset_date=None,
-                    add_offset=0,
-                    limit=limit,
-                    max_id=0,
-                    min_id=0,
+                participants = await client(GetParticipantsRequest(
+                    my_channel, ChannelParticipantsSearch(''), offset, limit,
                     hash=0
                 ))
-                if not history.messages:
+                if not participants.users:
                     break
-                messages = history.messages
-                for message in messages:
-                    all_messages.append(message.to_dict())
-                offset_id = messages[len(messages) - 1].id
-                total_messages = len(all_messages)
-
+                all_participants.extend(participants.users)
+                offset += len(participants.users)
                 sleep(3) #Hopefully prevent 420 FLOOD Error
-                if total_count_limit != 0 and total_messages >= total_count_limit:
-                    break
 
-            for message in messages:
-                try:
-                    if(message.media):
-                        media = await client.download_media(message, "media/" + eID.replace("https://t.me/", "").replace("\n","") + "/" + message.id)
-                        sleep(3) #Hopefully prevent 420 FLOOD Error
-                except:
-                    print("failed to dl media for message: " + message.id)
+            all_user_details = []
+            for participant in all_participants:
+                all_user_details.append(
+                    {"id": participant.id, "first_name": participant.first_name, "last_name": participant.last_name,
+                     "user": participant.username, "phone": participant.phone, "is_bot": participant.bot})
 
-            with open('channel_messages_' + eID.replace("https://t.me/", "").replace("\n","") + '.json', 'w') as outfile:
-                json.dump(all_messages, outfile, cls=DateTimeEncoder)
-        except Exception as err:  
-            print("failed to parse line", eID, err)
+            with open('users/user_data_' + eID.replace("https://t.me/", "").replace("\n","") + '.json', 'w') as outfile:
+                json.dump(all_user_details, outfile)
 
+        except Exception as err:
+            print(err)
+            print("failed to parse line", eID)
 
 with client:
     client.loop.run_until_complete(main(phone))
