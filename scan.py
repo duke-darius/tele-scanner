@@ -36,7 +36,7 @@ api_hash = str(api_hash)
 phone = config['Telegram']['phone']
 username = config['Telegram']['username']
 
-eIDsFile = open('telegramq.txt', 'r')
+eIDsFile = open('telegramq.txt', 'r') # Input file
 eIDs = eIDsFile.readlines()
 print("ECount: ", len(eIDs))
 
@@ -97,6 +97,8 @@ async def main(phone):
                     all_messages.append(message.to_dict())
                 offset_id = messages[len(messages) - 1].id
                 total_messages = len(all_messages)
+
+                sleep(3) #Hopefully prevent 420 FLOOD Error
                 if total_count_limit != 0 and total_messages >= total_count_limit:
                     break
 
@@ -104,6 +106,7 @@ async def main(phone):
                 try:
                     if(message.media):
                         media = await client.download_media(message, "media/" + eID.replace("https://t.me/", "").replace("\n","") + "/" + message.id)
+                        sleep(3) #Hopefully prevent 420 FLOOD Error
                 except:
                     print("failed to dl media for message: " + message.id)
 
