@@ -1,90 +1,186 @@
-import configparser
+### This is for 4704
+from telethon import TelegramClient, events, sync
 import json
+import os
 import asyncio
+import time
+from datetime import date, datetime
+import jsonpickle
+import random
+import pickle
+import abc
+from telethon import errors
+import sys
 
-from telethon import TelegramClient
+
+from bunch import bunchify
+
 from telethon.errors import SessionPasswordNeededError
-from telethon.tl.functions.channels import GetParticipantsRequest
-from telethon.tl.types import ChannelParticipantsSearch
+from telethon.tl.functions.messages import (GetHistoryRequest)
 from telethon.tl.types import (
-    PeerChannel
+	PeerChannel,
+	Message
 )
+import telethon.tl.types
+import traceback
 
-# Reading Configs
-config = configparser.ConfigParser()
-config.read("config.ini")
+class SubClient:
+	def __init__(self):
+		self.queue = []
 
-# Setting configuration values
-api_id = config['Telegram']['api_id']
-api_hash = config['Telegram']['api_hash']
+# some functions to parse json date
+class DateTimeEncoder(json.JSONEncoder):
+	def default(self, o):
+		if isinstance(o, datetime):
+			return o.isoformat()
 
-api_hash = str(api_hash)
+		if isinstance(o, bytes):
+			return list(o)
 
-phone = config['Telegram']['phone']
-username = config['Telegram']['username']
+		return json.JSONEncoder.default(self, o)
 
-eIDsFile = open('telegramq.txt', 'r')
-eIDs = eIDsFile.readlines()
-print("ECount: ", len(eIDs))
 
-# Create the client and connect
-client = TelegramClient(username, api_id, api_hash)
+api_id = xxx
+api_hash = "xxx"
+api_username = "xxx"
+api_number = "+xxx"
 
-async def main(phone):
-    await client.start()
-    print("Client Created")
-    # Ensure you're authorized
-    if await client.is_user_authorized() == False:
-        await client.send_code_request(phone)
-        try:
-            await client.sign_in(phone, input('Enter the code: '))
-        except SessionPasswordNeededError:
-            await client.sign_in(password=input('Password: '))
 
-    me = await client.get_me()
+client = TelegramClient('session_name', api_id, api_hash)
 
-    for eID in eIDs:
-        user_input_channel = eID
-        try:
-            if user_input_channel.isdigit():
-                entity = PeerChannel(int(user_input_channel))
-            else:
-                entity = user_input_channel
+subClientCount = 4
+subClients = []
 
-        except:    
-            print("failed to load: ", eID)
-            continue
 
-        try:
-            my_channel = await client.get_entity(entity)
 
-            offset = 0
-            limit = 100
-            all_participants = []
 
-            while True:
-                participants = await client(GetParticipantsRequest(
-                    my_channel, ChannelParticipantsSearch(''), offset, limit,
-                    hash=0
-                ))
-                if not participants.users:
-                    break
-                all_participants.extend(participants.users)
-                offset += len(participants.users)
-                sleep(3) #Hopefully prevent 420 FLOOD Error
+# groups = ["https://t.me/TrueGreatAwakening"]
+# group_id = "https://t.me/qanons_deutschland"
 
-            all_user_details = []
-            for participant in all_participants:
-                all_user_details.append(
-                    {"id": participant.id, "first_name": participant.first_name, "last_name": participant.last_name,
-                     "user": participant.username, "phone": participant.phone, "is_bot": participant.bot})
 
-            with open('users/user_data_' + eID.replace("https://t.me/", "").replace("\n","") + '.json', 'w') as outfile:
-                json.dump(all_user_details, outfile)
 
-        except Exception as err:
-            print(err)
-            print("failed to parse line", eID)
+async def main():
+	await client.start()
+	print("Client Created")
+	# Ensure you're authorized
+	if await client.is_user_authorized() == False:
+		await client.send_code_request(api_number)
+		try:
+			await client.sign_in(api_number, input('Enter the code: '))
+		except SessionPasswordNeededError:
+			await client.sign_in(password=input('Password: '))
+	
+
+
+	me = await client.get_me()
+
+	for group_id in open("input.txt", "r").read().splitlines():
+	# for group_id in groups:
+		print("waiting 30 seconds for next group :)")
+		time.sleep(5)
+
+		user_input_channel = group_id
+		
+		try:
+			if user_input_channel.isdigit():
+				entity = PeerChannel(int(user_input_channel))
+			else:
+				entity = user_input_channel
+
+			normGid = group_id.replace("https://t.me/", "").replace("\n","").lower()
+			print("parsing: ", normGid)
+
+			try:
+				my_channel = await client.get_input_entity(entity)
+
+			except Exception as entityErr:
+				print("Channel not found:", entity, entityErr)
+				continue
+				
+			try:
+				
+				print(my_channel)
+				users = []
+				messages = []
+				i = 0
+
+				messagesToDownload = []
+
+				try:
+					async for user in client.iter_participants(my_channel):
+						users.append(user)
+				except Exception as eee:
+					print("unable to get users for ", normGid, eee)
+
+				total = 0
+
+				try:
+					async with client.takeout() as takeout:
+						print("New Takeout session Created: ", normGid)
+						async for message in takeout.iter_messages(my_channel,wait_time=0):
+							if message.id > total:
+								total = message.id
+							if len(messages) % 100 == 0:
+								print(normGid, str(len(messages)) + "/" + str(total), "(" + str(message.id) + ")")
+							messages.append(message.to_dict())
+							
+							if(message.media):
+								messagesToDownload.append({
+									"id": message.id,
+									"media": message.media
+								})
+				except errors.TakeoutInitDelayError as e:
+					print('Must wait', e.seconds, 'before takeout')
+				except Exception as ge:
+					print(ge)
+					print("FAILED TO FULLY GET", normGid, "Last known id: ", messages[len(messages)-1].id)
+
+				print(len(messages))
+				# print(messages[0].stringify())
+
+				with open('groups/' + normGid + '.json', 'w') as outfile:
+					outfile.write(jsonpickle.encode(my_channel))
+					print("saved group: ", normGid)
+					
+
+				with open('users/' + normGid + '.json', 'w') as outfile:
+					outfile.write(jsonpickle.encode(users))
+					print("saved users, count: " + str(len(users)))
+
+				with open('messages/' + normGid + '.json', 'w') as outfile:
+					# json_str = jsonpickle.encode(messages, unpicklable=True)
+					print("saved messages, count: " + str(len(messages)))
+					outfile.write(json.dumps(messages,cls=DateTimeEncoder))
+					# outfile.write(json_str)
+					print("saved string to disk")
+
+				with open("mtd/"+ normGid + ".obj", 'w') as outfile:
+					json_str = jsonpickle.encode(messagesToDownload)
+					print("saved media messages, count: " + str(len(messagesToDownload)))
+					outfile.write(json_str)
+					print("saved to disk")
+				
+
+
+				# with open("mtd/"+ group_id.replace("https://t.me/", "").replace("\n","") + ".obj", 'r') as inFile:
+				# 	json_str = inFile.read()
+				# 	data = jsonpickle.decode(json_str)
+				# 	# print(data)
+				# 	for media in data:
+				# 		await client.download_media(media["media"], "media/" + str(media["id"]))
+
+
+
+
+			except Exception as inErr:
+				exc_type, exc_value, exc_traceback = sys.exc_info()
+
+				traceback.print_exception(exc_type, exc_value, exc_traceback,
+                              limit=2, file=sys.stdout)
+
+		except Exception as err:
+			print(err)
+
 
 with client:
-    client.loop.run_until_complete(main(phone))
+	client.loop.run_until_complete(main())
