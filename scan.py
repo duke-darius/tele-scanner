@@ -52,13 +52,6 @@ subClientCount = 4
 subClients = []
 
 
-
-
-# groups = ["https://t.me/TrueGreatAwakening"]
-# group_id = "https://t.me/qanons_deutschland"
-
-
-
 async def main():
 	await client.start()
 	print("Client Created")
