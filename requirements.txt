@@ -1,0 +1,6 @@
+bunch==1.0.1
+jsonpickle==1.5.1
+pyaes==1.6.1
+pyasn1==0.4.8
+rsa==4.7
+Telethon==1.19.1
